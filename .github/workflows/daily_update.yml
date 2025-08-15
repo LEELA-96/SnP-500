@@ -1,39 +1,40 @@
-name: Daily S&P 500 Update
+name: Daily S&P 500 Fetch & Update
 
+# Trigger daily at 12:00 UTC, and also manually
 on:
   schedule:
-    - cron: '0 17 * * *'  # Runs daily at 17:00 UTC (adjust if needed)
-  workflow_dispatch:  # Allows manual trigger
+    - cron: '0 12 * * *'  # every day at 12:00 UTC
+  workflow_dispatch:
 
 jobs:
-  update-db:
+  fetch-update:
     runs-on: ubuntu-latest
-    env:
-      DB_HOST: ${{ secrets.DB_HOST }}
-      DB_PORT: ${{ secrets.DB_PORT }}
-      DB_NAME: ${{ secrets.DB_NAME }}
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
 
+    steps:
+      # Checkout repo
+      - uses: actions/checkout@v3
+
+      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      # Install dependencies
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Fetch & Update S&P 500 Data
+      # Run daily fetch/update script
+      - name: Run daily fetch
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python scripts/fetch_stock.py
-          python scripts/load_headquarters.py
+          python fetch_update_daily.py
 
-      - name: Build / Rebuild Vector DB Embeddings
-        run: |
-          python scripts/embeddings_vector_db.py
