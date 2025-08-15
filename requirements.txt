@@ -1,11 +1,8 @@
-
 pandas
 yfinance
 psycopg2-binary
-sqlalchemy
+openpyxl
 streamlit
-openai
 langchain
-chromadb
-tqdm
-python-dotenv
+faiss-cpu
+openai
