@@ -1,0 +1,39 @@
+name: Daily S&P 500 Update
+
+on:
+  schedule:
+    - cron: '0 17 * * *'  # Runs daily at 17:00 UTC (adjust your preferred time)
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  update-db:
+    runs-on: ubuntu-latest
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_PORT: ${{ secrets.DB_PORT }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch & Update S&P 500 Data
+        run: |
+          python scripts/fetch_stock.py
+          python scripts/load_headquarters.py
+
+      - name: Build Vector DB Embeddings
+        run: |
+          python scripts/embeddings_vector_db.py
