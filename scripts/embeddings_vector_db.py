@@ -1,38 +1,41 @@
 import os
-import shutil
-import psycopg2
 import pandas as pd
+import psycopg2
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from langchain.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from langchain.llms import OpenAI
 
-DB_CONFIG = {
-    "host": os.environ["DB_HOST"],
-    "port": os.environ["DB_PORT"],
-    "database": os.environ["DB_NAME"],
-    "user": os.environ["DB_USER"],
-    "password": os.environ["DB_PASSWORD"]
-}
+def get_db_connection(DB_CONFIG):
+    conn = psycopg2.connect(
+        host=DB_CONFIG["host"],
+        port=DB_CONFIG["port"],
+        database=DB_CONFIG["database"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"]
+    )
+    return conn
 
-VECTOR_PATH = "vector_store"
-
-def create_embeddings():
-    # Delete old vector DB to force rebuild if needed
-    if os.path.exists(VECTOR_PATH):
-        shutil.rmtree(VECTOR_PATH)
-
-    print("📦 Creating vector DB embeddings...")
-
-    conn = psycopg2.connect(**DB_CONFIG)
-    df = pd.read_sql("SELECT * FROM stock_data ORDER BY date", conn)
+def get_vectorstore(DB_CONFIG, OPENAI_API_KEY, hq_df):
+    # Connect to DB and fetch stock data
+    conn = get_db_connection(DB_CONFIG)
+    stock_df = pd.read_sql("SELECT * FROM stock_data ORDER BY date", conn)
     conn.close()
+    
+    # Combine stock + HQ for embedding
+    combined_df = stock_df.merge(hq_df, left_on="symbol", right_on="Symbol", how="left")
+    combined_texts = combined_df.apply(lambda x: f"{x['symbol']} on {x['date']}: Open={x['open']}, Close={x['close']}, HQ={x['City']}, {x['Address']}", axis=1).tolist()
+    
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vectorstore = FAISS.from_texts(combined_texts, embeddings)
+    return vectorstore
 
-    texts = [f"{row['symbol']} {row['date']} close:{row['close']}" for _, row in df.iterrows()]
+def query_vectorstore(vectorstore, query):
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=OpenAI(openai_api_key=os.environ["OPENAI_API_KEY"], temperature=0),
+        chain_type="stuff",
+        retriever=vectorstore.as_retriever()
+    )
+    result = qa_chain.run(query)
+    return result
 
-    embeddings = OpenAIEmbeddings(openai_api_key=os.environ["OPENAI_API_KEY"])
-    vector_store = Chroma.from_texts(texts, embeddings, persist_directory=VECTOR_PATH)
-    vector_store.persist()
-
-    print("✅ Embeddings created and stored successfully.")
-
-if __name__ == "__main__":
-    create_embeddings()
