@@ -1,4 +1,4 @@
-faiss-cpu
+chromadb
 langchain
 openai
 pandas
