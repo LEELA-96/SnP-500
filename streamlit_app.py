@@ -1,11 +1,10 @@
 import streamlit as st
 import os
-import pickle
-from langchain.vectorstores import FAISS
+from langchain.vectorstores import Chroma
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
-from scripts import embeddings_vector_db  # make sure scripts is a package
+from scripts import embeddings_vector_db
 
 st.title("📈 S&P 500 Chatbot")
 
@@ -13,8 +12,7 @@ st.title("📈 S&P 500 Chatbot")
 embeddings_vector_db.create_embeddings()
 
 # Load vector DB
-with open("vector_store.pkl", "rb") as f:
-    vector_store = pickle.load(f)
+vector_store = Chroma(persist_directory="vector_store", embedding_function=OpenAIEmbeddings(openai_api_key=os.environ["OPENAI_API_KEY"]))
 
 qa = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(temperature=0, openai_api_key=os.environ["OPENAI_API_KEY"]),
