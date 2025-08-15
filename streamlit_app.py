@@ -1,26 +1,40 @@
 import streamlit as st
 import os
-from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.chains import RetrievalQA
-from langchain.chat_models import ChatOpenAI
-from scripts import embeddings_vector_db
+import pandas as pd
+import psycopg2
+from datetime import datetime
+from embeddings_vector_db import get_vectorstore, query_vectorstore
 
-st.title("📈 S&P 500 Chatbot")
+# --- Database Config from Streamlit Secrets ---
+DB_CONFIG = {
+    "host": os.environ["DB_HOST"],
+    "port": int(os.environ["DB_PORT"]),
+    "database": os.environ["DB_NAME"],
+    "user": os.environ["DB_USER"],
+    "password": os.environ["DB_PASSWORD"]
+}
 
-# Ensure embeddings exist
-embeddings_vector_db.create_embeddings()
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-# Load vector DB
-vector_store = Chroma(persist_directory="vector_store", embedding_function=OpenAIEmbeddings(openai_api_key=os.environ["OPENAI_API_KEY"]))
+# --- Streamlit UI ---
+st.title("📈 S&P 500 LLM Chatbot")
 
-qa = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(temperature=0, openai_api_key=os.environ["OPENAI_API_KEY"]),
-    retriever=vector_store.as_retriever()
-)
+st.markdown("""
+Ask questions about S&P 500 stock prices and company info. 
+Example: "What's Apple's price on August 5th, 2022?"
+""")
 
-query = st.text_input("Ask me about any stock (e.g., 'Apple price on 2022-08-05'):")
+user_query = st.text_input("Enter your question:")
 
-if query:
-    response = qa.run(query)
-    st.write("💬", response)
+# --- Load HQ data (already uploaded in repo) ---
+hq_df = pd.read_excel("data/Company_S&HQ (1).xlsx")
+
+# --- Vectorstore setup ---
+vectorstore = get_vectorstore(DB_CONFIG, OPENAI_API_KEY, hq_df)
+
+if st.button("Ask"):
+    if user_query.strip() == "":
+        st.warning("Please enter a question.")
+    else:
+        result = query_vectorstore(vectorstore, user_query)
+        st.write(result)
