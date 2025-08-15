@@ -1,33 +1,28 @@
-name: Daily S&P 500 Fetch & Update
+name: Daily S&P500 Fetch & Embeddings
 
-# Trigger daily at 12:00 UTC, and also manually
 on:
   schedule:
-    - cron: '0 12 * * *'  # every day at 12:00 UTC
+    - cron: '0 12 * * *'  # daily at 12:00 UTC (adjust)
   workflow_dispatch:
 
 jobs:
-  fetch-update:
+  daily:
     runs-on: ubuntu-latest
-
     steps:
-      # Checkout repo
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Set up Python
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      # Install dependencies
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Run daily fetch/update script
-      - name: Run daily fetch
+      - name: Run fetch & embeddings
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
@@ -36,5 +31,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python fetch_update_daily.py
+          python scripts/fetch_update_daily.py
+          python -c "from scripts.embeddings_vector_db import create_or_update_embeddings; create_or_update_embeddings()"
+
 
