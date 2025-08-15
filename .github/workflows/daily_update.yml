@@ -2,7 +2,7 @@ name: Daily S&P 500 Update
 
 on:
   schedule:
-    - cron: '0 17 * * *'  # Runs daily at 17:00 UTC (adjust your preferred time)
+    - cron: '0 17 * * *'  # Runs daily at 17:00 UTC (adjust if needed)
   workflow_dispatch:  # Allows manual trigger
 
 jobs:
@@ -34,6 +34,6 @@ jobs:
           python scripts/fetch_stock.py
           python scripts/load_headquarters.py
 
-      - name: Build Vector DB Embeddings
+      - name: Build / Rebuild Vector DB Embeddings
         run: |
           python scripts/embeddings_vector_db.py
