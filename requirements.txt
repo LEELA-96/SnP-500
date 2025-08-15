@@ -1,1 +1,11 @@
 
+pandas
+yfinance
+psycopg2-binary
+sqlalchemy
+streamlit
+openai
+langchain
+chromadb
+tqdm
+python-dotenv
