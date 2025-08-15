@@ -1,40 +1,50 @@
+# streamlit_app.py
 import streamlit as st
 import os
-import pandas as pd
-import psycopg2
-from datetime import datetime
-from embeddings_vector_db import get_vectorstore, query_vectorstore
+from scripts.embeddings_vector_db import create_or_update_embeddings, load_vectorstore
+from scripts.fetch_update_daily import main as run_fetch_update
 
-# --- Database Config from Streamlit Secrets ---
-DB_CONFIG = {
-    "host": os.environ["DB_HOST"],
-    "port": int(os.environ["DB_PORT"]),
-    "database": os.environ["DB_NAME"],
-    "user": os.environ["DB_USER"],
-    "password": os.environ["DB_PASSWORD"]
-}
-
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-
-# --- Streamlit UI ---
+st.set_page_config(page_title="S&P500 LLM Chatbot", layout="wide")
 st.title("📈 S&P 500 LLM Chatbot")
 
-st.markdown("""
-Ask questions about S&P 500 stock prices and company info. 
-Example: "What's Apple's price on August 5th, 2022?"
-""")
+st.markdown("Ask historical price questions (e.g., `What's AAPL close on 2022-08-05?`)")
 
-user_query = st.text_input("Enter your question:")
+# Buttons for manual operations
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Fetch & update stock data (manual)"):
+        with st.spinner("Fetching and updating DB..."):
+            run_fetch_update()
+        st.success("Database updated.")
 
-# --- Load HQ data (already uploaded in repo) ---
-hq_df = pd.read_excel("data/Company_S&HQ (1).xlsx")
+with col2:
+    if st.button("(Re)build embeddings (manual)"):
+        with st.spinner("Building embeddings (may take a few minutes)..."):
+            create_or_update_embeddings()
+        st.success("Embeddings created/updated.")
 
-# --- Vectorstore setup ---
-vectorstore = get_vectorstore(DB_CONFIG, OPENAI_API_KEY, hq_df)
+# Ensure embeddings exist at startup (safe no-op if already created)
+if not os.path.exists("vector_store"):
+    with st.spinner("Creating embeddings on first run..."):
+        create_or_update_embeddings()
 
-if st.button("Ask"):
-    if user_query.strip() == "":
-        st.warning("Please enter a question.")
-    else:
-        result = query_vectorstore(vectorstore, user_query)
-        st.write(result)
+# Load vectorstore & LLM
+from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import RetrievalQA
+
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+vectordb = Chroma(persist_directory="vector_store", embedding_function=embeddings)
+retriever = vectordb.as_retriever(search_kwargs={"k": 6})
+llm = ChatOpenAI(temperature=0, openai_api_key=OPENAI_API_KEY)
+qa = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
+
+query = st.text_input("Ask a question about stock prices or HQ data:")
+if query:
+    with st.spinner("Thinking..."):
+        answer = qa.run(query)
+    st.markdown("**Answer:**")
+    st.write(answer)
+
