@@ -1,41 +1,42 @@
+# scripts/embeddings_vector_db.py
 import os
 import pandas as pd
-import psycopg2
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chains import RetrievalQA
-from langchain.llms import OpenAI
+from langchain_community.vectorstores import Chroma
+from sqlalchemy import create_engine, text
 
-def get_db_connection(DB_CONFIG):
-    conn = psycopg2.connect(
-        host=DB_CONFIG["host"],
-        port=DB_CONFIG["port"],
-        database=DB_CONFIG["database"],
-        user=DB_CONFIG["user"],
-        password=DB_CONFIG["password"]
-    )
-    return conn
+DB_HOST = os.environ["DB_HOST"]
+DB_PORT = int(os.environ["DB_PORT"])
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-def get_vectorstore(DB_CONFIG, OPENAI_API_KEY, hq_df):
-    # Connect to DB and fetch stock data
-    conn = get_db_connection(DB_CONFIG)
-    stock_df = pd.read_sql("SELECT * FROM stock_data ORDER BY date", conn)
-    conn.close()
-    
-    # Combine stock + HQ for embedding
-    combined_df = stock_df.merge(hq_df, left_on="symbol", right_on="Symbol", how="left")
-    combined_texts = combined_df.apply(lambda x: f"{x['symbol']} on {x['date']}: Open={x['open']}, Close={x['close']}, HQ={x['City']}, {x['Address']}", axis=1).tolist()
-    
+DB_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+engine = create_engine(DB_URL, pool_pre_ping=True)
+
+PERSIST_DIR = "vector_store"
+
+def create_or_update_embeddings():
+    # Load stock_data from DB
+    with engine.begin() as conn:
+        df = pd.read_sql(text("SELECT symbol, date, open, high, low, close, volume FROM stock_data ORDER BY date"), conn)
+
+    if df.empty:
+        print("No stock data found to create embeddings.")
+        return
+
+    # Create text representation (one per row)
+    texts = df.apply(lambda r: f"{r.symbol} on {r.date}: open={r.open}, high={r.high}, low={r.low}, close={r.close}, volume={r.volume}", axis=1).tolist()
+    metadatas = df.apply(lambda r: {"symbol": r.symbol, "date": str(r.date)}, axis=1).tolist()
+
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    vectorstore = FAISS.from_texts(combined_texts, embeddings)
-    return vectorstore
+    vectordb = Chroma.from_texts(texts, embeddings, metadatas=metadatas, persist_directory=PERSIST_DIR)
+    vectordb.persist()
+    print(f"Chroma vector DB created/persisted at {PERSIST_DIR}")
 
-def query_vectorstore(vectorstore, query):
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=OpenAI(openai_api_key=os.environ["OPENAI_API_KEY"], temperature=0),
-        chain_type="stuff",
-        retriever=vectorstore.as_retriever()
-    )
-    result = qa_chain.run(query)
-    return result
+def load_vectorstore():
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    return Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
+
 
