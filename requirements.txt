@@ -1,9 +1,10 @@
-chromadb
+streamlit
+pandas
+psycopg2-binary
+openai
 langchain
 langchain-community
-openai
-pandas
+faiss-cpu
 yfinance
-psycopg2-binary
 openpyxl
-streamlit
+
